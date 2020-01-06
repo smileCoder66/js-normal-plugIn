@@ -208,12 +208,12 @@
         if (time) {
           setTimeout(() => {
             this.isRunning = false
-            fn()
+            fn.bind(this)()
             this.laterRun(arr)
           }, time);
         } else {
           this.isRunning = false
-          fn()
+          fn.bind(this)()
           this.laterRun(arr)
         }
       }
