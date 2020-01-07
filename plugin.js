@@ -11,83 +11,99 @@
       const toRem = fontSize ? fontSize.replace('px', '') * 1 : 48
       this.ele = doc.querySelector(app)
       this.toRem = toRem
-      this.loadList = {
-        images: [],
-        spritesheets: []
+
+      //存放已加载的图片loadList
+      this.loadList = []
+      //存放已生成到页面的dom元素及对应图片的key
+      this.domList = []
+
+      /**
+       * @description: 加载图片list
+       * @param {string} key
+       * @param {string} url
+       */
+      this.load = (key, url) => {
+        new Image().src = url
+        this.loadList.push({ key, url })
       }
-      this.load = {
-        image: (key, url, css) => {
-          let image = this.createImg(url)
-          image.id = key
-          this.loadList.images.push({
-            key,
-            box: image,
-            styles: css || {}
-          })
-        },
-        spritesheet: (key, url, css) => {
-          let spritesheet = this.createBox(key, url)
-          let { width, height, imgStyles } = css
-          let styles = { width, height }
-          this.loadList.spritesheets.push({
-            key,
-            box: spritesheet,
-            styles,
-            imgStyles
-          })
-        }
-      }
+
       this.add = {
+        /**
+         * @description: 生成dom元素并记录
+         * @param {number} x
+         * @param {number} y
+         * @param {string} key
+         */
         image: (x, y, key) => {
-          this.loadList.images.forEach(item => {
-            if (item.key == key) {
-              item.styles.left = x
-              item.styles.top = y
-            }
-          })
+          let { url } = this.loadList.filter(i => i.key == key)[0]
+          let img = this.createIMG(url)
+          img.style.position = 'absolute'
+          img.style.left = x ? `${x / toRem}rem` : x
+          img.style.top = y ? `${y / toRem}rem` : y
+          this.domList.push({ box: img, key, id: key })
         },
-        spritesheet: (x, y, key) => {
-          this.loadList.spritesheets.forEach(item => {
-            if (item.key == key) {
-              item.styles.left = x
-              item.styles.top = y
-            }
-          })
+        /**
+         * @description: 生成dom元素并记录
+         * @param {number} x
+         * @param {number} y
+         * @param {object} obj {key(对应图片key):id(你要设置的盒子id)}
+         */
+        spritesheet: (x, y, obj) => {
+          let key = Object.keys(obj)
+          let id = obj[key]
+          let { url } = this.loadList.filter(i => i.key == key)[0]
+          let box = this.createBOX(url)
+          box.id = id
+          box.style.position = 'absolute'
+          box.style.left = x ? `${x / toRem}rem` : x
+          box.style.top = y ? `${y / toRem}rem` : y
+          this.domList.push({ box, key, id })
         }
       }
-      this.find = key => {
-        let { images, spritesheets } = this.loadList
-        let arr = [...images, ...spritesheets]
-        let { box } = arr.filter(item => key == item.key)[0]
-        return box
-      }
-      this.hide = key => {
-        this.find(key).style.display = 'none'
-      }
-      this.show = key => {
-        this.find(key).style.display = 'block'
+      this.find = id => {
+        return this.domList.filter(item => id == item.id)[0].box
       }
     }
-    createImg (url) {
+    /**
+     * @description: 生成img元素
+     * @param {string} url
+     * @return: <img>
+     */
+    createIMG (url) {
       let img = new Image()
       img.src = url
-      img.onload = function () {
+      img.onload = () => {
         img.width /= 2
       }
       return img
     }
-    createBox (key, url) {
-      let img = this.createImg(url)
+    /**
+     * @description: 生成精灵盒子元素
+     * @param {string} url
+     * @return: <div><img></div>
+     */
+    createBOX (url) {
+      let img = new Image()
+      img.src = url
+      img.onload = () => {
+        img.width /= 2
+      }
       let div = doc.createElement('div')
-      div.id = key
       div.appendChild(img)
       return div
+    }
+    show (id) {
+      this.find(id).style.display = 'block'
+    }
+    hide (id) {
+      this.find(id).style.display = 'none'
     }
   }
 
   class setStyle extends Game {
     constructor(config) {
       super(config)
+      this.styleList = []
       this.styleSheets = ''
       this.isFloat = n => ~~n !== n
       this.getValue = n => {
@@ -95,36 +111,57 @@
         this.isFloat(value) && (value = value.toFixed(6))
         return value
       }
+      this.forInStyles = obj =>{
+        let str = ''
+        for (const key in obj) {
+          if (key !== 'imgStyles') {
+            str += `${key}:${this.getValue(obj[key])}rem;`
+          }
+        }
+        return str
+      }
+      /**
+       * @description: 集成styleSheets,推至style标签内
+       * @param {[{styles,id:String,imgStyles}]} arr
+       */
       this.createStyles = arr => {
         arr.forEach(item => {
-          let str = `#${item.key}{position: absolute;`
-          let { styles, imgStyles } = item
-          for (const key in styles) {
-            str += `${key}:${this.getValue(styles[key])}rem;`
-          }
+          let { styles, id } = item
+          let str = `#${id}{position: absolute;`
+          str += this.forInStyles(styles)
           str += 'overflow:hidden;}'
+          let { imgStyles } = styles
           if (imgStyles) {
-            str += `#${item.key} img{position: relative;`
-            for (const key in imgStyles) {
-              str += `${key}:${this.getValue(imgStyles[key])}rem;`
-            }
+            str += `#${id} img{position: relative;`
+            str += this.forInStyles(imgStyles)
             str += '}'
           }
           this.styleSheets += str
         })
       }
+      this.setStyles = {
+        image: (key, styles) => {
+          this.styleList.push({ key, styles })
+        },
+        /**
+         * @description: 
+         * @param {{key:string,id:string}} obj
+         * @param {{}} styles
+         * @return: 
+         */        
+        spritesheet: (obj, styles) => {
+          let key = Object.keys(obj)[0]
+          let id = obj[key]
+          this.styleList.push({ key, styles, id })
+        }
+      }
       this.addCSS = () => {
-        let { images, spritesheets } = this.loadList
-        this.createStyles(images)
-        this.createStyles(spritesheets)
+        this.createStyles(this.styleList)
         doc.querySelector('style').innerHTML += this.styleSheets
       }
       this.loading = () => {
         this.addCSS()
-        this.loadList.images.forEach(item => {
-          this.ele.appendChild(item.box)
-        })
-        this.loadList.spritesheets.forEach(item => {
+        this.domList.forEach(item => {
           this.ele.appendChild(item.box)
         })
         return this
@@ -188,12 +225,13 @@
       super(config)
       this.movie = []
       this.isRunning = false
-      const { preload, add, active, event } = config
+      const { preload, setStyles, add, active, event } = config
       this.$touch = (key, fn) => {
         this.find(key).ontouchend = fn.bind(this)
       }
       this.init = () => {
         this.do(preload)
+          .do(setStyles)
           .do(add)
           .loading()
           .do(active)
