@@ -3,7 +3,6 @@
     win.webkitRequestAnimationFrame || win.msRequestAnimationFrame;
 
   let cancelFrame = win.cancelAnimationFrame || win.mozCancelAnimationFrame;
-
   class Game {
     constructor(config) {
       const { app } = config
@@ -11,6 +10,7 @@
       const toRem = fontSize ? fontSize.replace('px', '') * 1 : 48
       this.ele = doc.querySelector(app)
       this.toRem = toRem
+
       this.IsNum = (value) => {
         return typeof value === 'number' && !isNaN(value);
       }
@@ -95,15 +95,80 @@
       div.appendChild(img)
       return div
     }
+
     show (id) {
       this.find(id).style.display = 'block'
     }
+
     hide (id) {
       this.find(id).style.display = 'none'
     }
   }
 
-  class setStyle extends Game {
+  class Fun extends Game {
+    constructor(config) {
+      super(config)
+      this.advertiseTime = null
+
+      this.ajax = opt => {
+        let defaults = { async: true, data: '', ...opt }
+        let xhr = new XMLHttpRequest();
+        if (defaults.type.toLowerCase() == 'get') {
+          defaults.url += '?' + getParms(defaults.data);
+          xhr.open('get', defaults.url, defaults.async);
+          xhr.send(null);
+        } else {
+          xhr.open('post', defaults.url, defaults.async);
+          xhr.setRequestHeader('content-type',
+            'application/x-www-form-urlencoded');
+          xhr.send(defaults.data);
+        }
+        xhr.onreadystatechange = function () {
+          if (xhr.readyState == 4) {
+            if (xhr.status == 200) {
+              defaults.success(xhr.responseText);
+            } else {
+              console('错误是：' + xhr.status);
+            }
+          }
+        }
+      }
+
+      this.checkImg = img => {
+        this.advertiseTime = setInterval(() => {
+          imgLoad(img, () => {
+            if (!img.complete) {
+              img.src = '';
+              img.src = data.iurl;
+            } else {
+              clearInterval(this.advertiseTime);
+              StatisticsPix('ad_imp');
+            }
+          })
+        }, 4000);
+      }
+
+      this.getData = (url, requestData) => {
+        clearInterval(this.advertiseTime)
+        let data = requestData.ts = new Date().getTime()
+        this.ajax({
+          type: 'get',
+          url,
+          data,
+          success: res => {
+            data = JSON.parse(res)
+            adid = data.adid;
+            oid = data.nm_id;
+            advertise.src = data.iurl;
+            ad_curl = data.ad_curl;
+            this.checkImg(advertise)
+          }
+        })
+      }
+    }
+  }
+
+  class setStyle extends Fun {
     constructor(config) {
       super(config)
       this.styleList = []
@@ -111,11 +176,13 @@
       this.styleSheets = ''
       this.activeSheets = ''
       this.isFloat = n => ~~n !== n
+
       this.getValue = n => {
         let value = n / this.toRem
         this.isFloat(value) && (value = value.toFixed(6))
         return value
       }
+
       this.needHack = key => {
         if (key.indexOf('transform') !== -1) {
           return `-webkit-${key}`
@@ -123,6 +190,7 @@
           return false
         }
       }
+
       this.forInStyles = obj => {
         let str = ''
         for (const key in obj) {
@@ -149,18 +217,15 @@
       this.createStyles = arr => {
         arr.forEach(item => {
           let { styles, id } = item
-          let str = `#${id}{position: absolute;`
-          str += this.forInStyles(styles)
-          str += 'overflow:hidden;}'
+          let str = `#${id}{position: absolute;${this.forInStyles(styles)}overflow:hidden;}`
           let { imgStyles } = styles
           if (imgStyles) {
-            str += `#${id} img{position: relative;`
-            str += this.forInStyles(imgStyles)
-            str += '}'
+            str += `#${id} img{position: relative;${this.forInStyles(imgStyles)}}`
           }
           this.styleSheets += str
         })
       }
+
       this.setStyles = {
         image: (key, styles) => {
           this.styleList.push({ key, styles, id: key })
@@ -170,8 +235,8 @@
           let id = obj[key]
           this.styleList.push({ key, styles, id })
         },
-        active: (key, className, styles) => {
-          let str = `#${key}.${className} img{`
+        active: (key, styles) => {
+          let str = `#${key}.active img{`
           for (const a in styles) {
             if (this.IsNum(styles[a])) {
               str += `${a}:${this.getValue(styles[a])}rem;`
@@ -179,8 +244,7 @@
               str += `${a}:${style[a]};`
             }
           }
-          str += '}'
-          this.activeSheets = str
+          this.activeSheets = `${str}}`
         },
         keyframes: (name, step, stepStyle, frameDetail) => {
           let str = `${name}{`
@@ -211,12 +275,14 @@
           this.keyframesSheets += ` .${name}{-webkit-animation:${name} ${frameDetail};animation:${name} ${frameDetail};}`
         }
       }
+
       this.addCSS = () => {
         this.styleSheets += this.keyframesSheets
         this.createStyles(this.styleList)
         this.styleSheets += this.activeSheets
         doc.querySelector('style').innerHTML += this.styleSheets
       }
+
       this.loading = () => {
         this.addCSS()
         this.domList.forEach(item => {
@@ -224,10 +290,6 @@
         })
         return this
       }
-    }
-    do = fn => {
-      fn.bind(this)()
-      return this
     }
   }
 
@@ -251,13 +313,9 @@
         let value = null
         let id = ele.id
         if (key == 'rotate') {
-          value = deg => {
-            return `${key}(${deg}deg)`
-          }
+          value = deg => `${key}(${deg}deg)`
         } else if (key == 'scale') {
-          value = deg => {
-            return `${key}(${deg})`
-          }
+          value = deg => `${key}(${deg})`
         }
         const movie = () => {
           deg -= ud
@@ -290,7 +348,7 @@
           }
         },
         keyframes: (obj, time) => {
-          let id = Object.keys(obj)
+          let id = Object.keys(obj)[0]
           let ele = this.find(id)
           this.keyframesList[id] = setInterval(() => {
             ele.className = ele.className == obj[id] ? '' : obj[id]
@@ -314,7 +372,7 @@
       super(config)
       const { preload, setStyles, add, active, event } = config
       this.movie = []
-      this.timer = []
+      this.classTimer = []
       this.isRunning = false
       this.$touch = (key, fn) => {
         this.find(key).ontouchend = fn.bind(this)
@@ -328,6 +386,10 @@
           .do(event)
       }
       this.init()
+    }
+    do = fn => {
+      fn.bind(this)()
+      return this
     }
     laterRun (arr) {
       if (arr.length && !this.isRunning) {
@@ -344,9 +406,6 @@
       this.movie.push({ fn, time })
       this.laterRun(this.movie)
       return this
-    }
-    sTimeFn (key, fn, time) {
-      this.timer[key] = setInterval(fn.bind(this), time);
     }
   }
 
