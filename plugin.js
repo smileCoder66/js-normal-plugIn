@@ -11,6 +11,9 @@
       const toRem = fontSize ? fontSize.replace('px', '') * 1 : 48
       this.ele = doc.querySelector(app)
       this.toRem = toRem
+      this.IsNum = (value) => {
+        return typeof value === 'number' && !isNaN(value);
+      }
 
       //存放已加载的图片loadList
       this.loadList = []
@@ -38,8 +41,8 @@
           let { url } = this.loadList.filter(i => i.key == key)[0]
           let img = this.createIMG(url)
           img.style.position = 'absolute'
-          img.style.left = x ? `${x / toRem}rem` : x
-          img.style.top = y ? `${y / toRem}rem` : y
+          img.style.left = this.IsNum(x) ? `${x / toRem}rem` : x
+          img.style.top = this.IsNum(y) ? `${y / toRem}rem` : y
           this.domList.push({ box: img, key, id: key })
         },
         /**
@@ -104,18 +107,37 @@
     constructor(config) {
       super(config)
       this.styleList = []
+      this.keyframesSheets = ''
       this.styleSheets = ''
+      this.activeSheets = ''
       this.isFloat = n => ~~n !== n
       this.getValue = n => {
         let value = n / this.toRem
         this.isFloat(value) && (value = value.toFixed(6))
         return value
       }
-      this.forInStyles = obj =>{
+      this.needHack = key => {
+        if (key.indexOf('transform') !== -1) {
+          return `-webkit-${key}`
+        } else {
+          return false
+        }
+      }
+      this.forInStyles = obj => {
         let str = ''
         for (const key in obj) {
           if (key !== 'imgStyles') {
-            str += `${key}:${this.getValue(obj[key])}rem;`
+            if (this.IsNum(obj[key])) {
+              if (this.needHack(key)) {
+                str += `${this.needHack(key)}:${this.getValue(obj[key])}rem;`
+              }
+              str += `${key}:${this.getValue(obj[key])}rem;`
+            } else {
+              if (this.needHack(key)) {
+                str += `${this.needHack(key)}:${obj[key]};`
+              }
+              str += `${key}:${obj[key]};`
+            }
           }
         }
         return str
@@ -141,22 +163,58 @@
       }
       this.setStyles = {
         image: (key, styles) => {
-          this.styleList.push({ key, styles })
+          this.styleList.push({ key, styles, id: key })
         },
-        /**
-         * @description: 
-         * @param {{key:string,id:string}} obj
-         * @param {{}} styles
-         * @return: 
-         */        
         spritesheet: (obj, styles) => {
           let key = Object.keys(obj)[0]
           let id = obj[key]
           this.styleList.push({ key, styles, id })
+        },
+        active: (key, className, styles) => {
+          let str = `#${key}.${className} img{`
+          for (const a in styles) {
+            if (this.IsNum(styles[a])) {
+              str += `${a}:${this.getValue(styles[a])}rem;`
+            } else {
+              str += `${a}:${style[a]};`
+            }
+          }
+          str += '}'
+          this.activeSheets = str
+        },
+        keyframes: (name, step, stepStyle, frameDetail) => {
+          let str = `${name}{`
+          let stepValue = parseInt(100 / (step - 1))
+          Array.from(new Array(step)).forEach((i, idx) => {
+            let persent = idx * stepValue
+            str += `${persent}%{`
+            for (let key in stepStyle[idx]) {
+              let vals = stepStyle[idx][key]
+              let setIn = ''
+              if (this.IsNum(vals)) {
+                if (this.needHack(key)) {
+                  setIn = `${this.needHack(key)}:${this.getValue(vals)}rem;`
+                }
+                setIn += `${key}:${this.getValue(vals)}rem;`
+              } else {
+                if (this.needHack(key)) {
+                  setIn = `${this.needHack(key)}:${vals};`
+                }
+                setIn += `${key}:${vals};`
+              }
+              str += setIn
+            }
+            str += '}'
+          })
+          str += '}'
+          this.keyframesSheets += ` @-webkit-keyframes ${str} @keyframes ${str}`
+          this.keyframesSheets += ` .${name}{-webkit-animation:${name} ${frameDetail};animation:${name} ${frameDetail};}`
         }
       }
       this.addCSS = () => {
+        this.styleSheets += this.keyframesSheets
         this.createStyles(this.styleList)
+        this.styleSheets += this.activeSheets
         doc.querySelector('style').innerHTML += this.styleSheets
       }
       this.loading = () => {
@@ -177,45 +235,76 @@
     constructor(config) {
       super(config)
       this.frameList = {}
+      this.keyframesList = {}
       this.isString = n => n === n + ''
-      this.rotate = (ele, key) => {
-        let deg = 0
-        const movie = () => {
-          deg++
-          ele.style.WebkitTransform = `rotate(${deg}deg)`
-          ele.style.transform = `rotate(${deg}deg)`
-          this.frameList[key] = runFrame(movie)
-        }
-        this.frameList[key] = runFrame(movie)
-      }
-      this.scale = (ele, key) => {
-        let duce = 0.01
-        let val = 1
-        const movie = () => {
-          val -= duce
-          if (val >= 1 || val <= 0.8) {
-            duce = -duce
+      /**
+       * @description: 执行默认特效
+       * @param {Node} ele 
+       * @param {[]} area 
+       * @param {string} key 
+       */
+      this.goFrame = (ele, area, key) => {
+        const min = area[0]
+        const max = area[1]
+        let ud = area[2]
+        let deg = min
+        let value = null
+        let id = ele.id
+        if (key == 'rotate') {
+          value = deg => {
+            return `${key}(${deg}deg)`
           }
-          ele.style.WebkitTransform = `scale(${val})`
-          ele.style.transform = `scale(${val})`
-          this.frameList[key] = runFrame(movie)
+        } else if (key == 'scale') {
+          value = deg => {
+            return `${key}(${deg})`
+          }
         }
-        this.frameList[key] = runFrame(movie)
+        const movie = () => {
+          deg -= ud
+          if (deg >= min || deg <= max) {
+            ud = -ud
+          }
+          ele.style.WebkitTransform = value(deg)
+          ele.style.transform = value(deg)
+          this.frameList[id] = runFrame(movie)
+        }
+        this.frameList[id] = runFrame(movie)
       }
-      this.active = (key, fn) => {
-        let ele = this.find(key)
-        if (this.isString(fn)) {
-          this[fn](ele, key)
-        } else {
-          const movie = () => {
-            fn(ele)
+      /**
+       * @description: 指定元素执行特效
+       * @param {string} key
+       * @param {[]} area
+       * @param {Function} fn
+       */
+      this.active = {
+        frame: (key, area, fn) => {
+          let ele = this.find(key)
+          if (this.isString(fn)) {
+            this.goFrame(ele, area, fn)
+          } else {
+            const movie = () => {
+              fn(ele)
+              this.frameList[key] = runFrame(movie)
+            }
             this.frameList[key] = runFrame(movie)
           }
-          this.frameList[key] = runFrame(movie)
+        },
+        keyframes: (obj, time) => {
+          let id = Object.keys(obj)
+          let ele = this.find(id)
+          this.keyframesList[id] = setInterval(() => {
+            ele.className = ele.className == obj[id] ? '' : obj[id]
+          }, time);
         }
       }
-      this.stop = key => {
-        cancelFrame(this.frameList[key])
+      this.stop = {
+        frame: key => {
+          cancelFrame(this.frameList[key])
+        },
+        keyframes: id => {
+          clearInterval(this.keyframesList[id])
+          this.find(id).className = ''
+        }
       }
     }
   }
@@ -223,9 +312,10 @@
   class Event extends Active {
     constructor(config) {
       super(config)
-      this.movie = []
-      this.isRunning = false
       const { preload, setStyles, add, active, event } = config
+      this.movie = []
+      this.timer = []
+      this.isRunning = false
       this.$touch = (key, fn) => {
         this.find(key).ontouchend = fn.bind(this)
       }
@@ -243,23 +333,20 @@
       if (arr.length && !this.isRunning) {
         let { fn, time } = arr.shift()
         this.isRunning = true
-        if (time) {
-          setTimeout(() => {
-            this.isRunning = false
-            fn.bind(this)()
-            this.laterRun(arr)
-          }, time);
-        } else {
+        setTimeout(() => {
           this.isRunning = false
           fn.bind(this)()
           this.laterRun(arr)
-        }
+        }, time || 0);
       }
     }
     frame (fn, time) {
       this.movie.push({ fn, time })
       this.laterRun(this.movie)
       return this
+    }
+    sTimeFn (key, fn, time) {
+      this.timer[key] = setInterval(fn.bind(this), time);
     }
   }
 
