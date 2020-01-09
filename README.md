@@ -12,13 +12,15 @@ setStyles.spritesheet({
 }, style: {..., imgStyles: Object})
 
 setStyles.keyframes(key: String, step: Number, frameStyle: [{}], frameDetail: String)
-  //step:分多少步完成动画特效,frameStyle:每一步设置的特效样式(需对应step的步数,frameDetail:类似写入css的animation值,无需写动画名已绑定对应key)
+  //step:分多少步完成动画特效,frameStyle:每一步设置的特效样式
+  //(frameStyle内数据需对应step的步数,frameDetail:类似写入css的animation值,无需写动画名已绑定对应key)
 
 //定位元素并放置
 add.image(x: Number, y: Number, key: String)
 add.spritesheet(x: Number, y: Number, {
   '已load的key': '你要设置的元素id'
 })
+add.render(fn: Function)
 
 //绑定事件(touchend)
 $touch(key: String, fn: Function)
@@ -38,6 +40,25 @@ frame(fn: Function, time: Number)
 
 ### 栗子
 
+```js
+//仿render
+this.add.render(h => {
+  //h(etype, css, childs)
+  return h('div', {}, [
+    h('p', {}, [
+      h('span', {})
+    ]),
+    h('h2')
+  ])
+})
+/*
+  <div>
+    <p><span></span><p>
+    <h2></h2>
+  </div>
+*/
+```
+
 ```html
-正在完善,后续会补充和插件注释
+正在完善,后续会完善功能及补充注释
 ```
