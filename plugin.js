@@ -144,7 +144,7 @@
       this.isFloat = n => ~~n !== n
 
       /**
-       * @description: 如果为浮点数则为rem保留小数点
+       * @description: 浮点数 && rem保留小数点
        * @param {number} n
        * @return:float || int
        */
@@ -154,24 +154,18 @@
         return value
       }
 
-      this.forStyles = (css, filterArr) => {
-        let str = ''
-        !filterArr && (filterArr = [])
-        Object.keys(css).filter(key => !filterArr.includes(key)).forEach(key => {
-          if (this.IsNum(css[key])) {
-            str += `${key}:${this.getValue(css[key])}rem;`
-          } else {
-            if (this.needHack(key)) {
-              str += `${this.needHack(key)}:${css[key]};`
-            }
-            str += `${key}:${css[key]};`
-          }
-        })
-        return str
+      /**
+       * @description:驼峰大小写分割 
+       * @param {string} str 
+       * @return: in:fontSize out:font-size
+       */
+      this.strsplit = str => {
+        let arr = str.split(/(?=[A-Z])/);
+        return arr.join('-').toLowerCase();
       }
 
       /**
-       * @description: 兼容css3
+       * @description: 兼容css3前缀
        * @param {string} key 
        * @return {boolean}
        */
@@ -182,6 +176,29 @@
           return false
         }
       }
+
+      /**
+       * @description: 兼容样式集合
+       * @param {{}} css
+       * @param {[]} filterArr
+       * @return: 兼容后的css内容
+       */
+      this.forStyles = (css, filterArr) => {
+        let str = ''
+        !filterArr && (filterArr = [])
+        Object.keys(css).filter(key => !filterArr.includes(key)).forEach(key => {
+          if (this.IsNum(css[key])) {
+            str += `${this.strsplit(key)}:${this.getValue(css[key])}rem;`
+          } else {
+            if (this.needHack(key)) {
+              str += `${this.needHack(this.strsplit(key))}:${css[key]};`
+            }
+            str += `${this.strsplit(key)}:${css[key]};`
+          }
+        })
+        return str
+      }
+
       /**
        * @description: 集成styleSheets,推至style标签内
        * @param {[{styles,id:String,imgStyles}]} arr
@@ -246,17 +263,47 @@
     constructor(config) {
       super(config)
       const { add } = config
+      this.watchs = {}
+      this.watchsTimer = {}
+      this.$set = (id, key, val) => {
+        this.watchs[id][key] = val
+      }
+      this.watchProps = (id, obj, key) => {
+        this.watchs[id] = {
+          ...this.watchs[id],
+          [key]: null
+        }
+        Object.defineProperty(this.watchs[id], key, {
+          get: () => {
+            return obj[key]
+          },
+          set: val => {
+            clearInterval(this.watchsTimer[id])
+            this.watchsTimer[id] = setInterval(() => {
+              let ele = doc.querySelector(`#${id}`)
+              if (ele) {
+                clearInterval(this.watchsTimer[id])
+                ele[key] = val
+              }
+            }, 50);
+          }
+        })
+        this.watchs[id][key] = obj[key]
+      }
+
       this.setCSS = (ele, css) => {
         let { id, className } = ele
         let i = id ? `#${id}` : ''
         let c = className ? `.${className}` : ''
         if (i || c) {
-          let str = `${i}${c}{position:absloute;`
-          let fArr = ['id', 'className']
+          let str = `${i}${c}{position:absolute;`
+          let fArr = ['id', 'className', 'props', 'font']
           str += `${this.forStyles(css, fArr)}}`
           this.renderSheets += str
         }
+        css.props && this.watchProps(id, css.props, 'innerText')
       }
+
       this.add = {
         /**
          * @description: 生成dom元素并记录
@@ -305,12 +352,16 @@
             this.setCSS(ele, css)
             if (childs && childs.length) {
               childs.forEach(i => {
-                ele.appendChild(i)
+                if (typeof (i) !== 'string') {
+                  ele.appendChild(i)
+                } else {
+                  ele.innerText += i
+                }
               })
             }
             return ele
           }
-          let box = fn(h)
+          let box = fn.bind(this)(h)
           this.domList.push({ box, key: box.id, id: box.id })
         }
       }
