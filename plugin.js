@@ -3,16 +3,16 @@
     win.webkitRequestAnimationFrame || win.msRequestAnimationFrame;
 
   let cancelFrame = win.cancelAnimationFrame || win.mozCancelAnimationFrame;
+
   class Game {
     constructor(config) {
-      const { app } = config
+      const { app, preload } = config
       const fontSize = doc.querySelector('html').style.fontSize
-      const toRem = fontSize ? fontSize.replace('px', '') * 1 : 48
+      this.toRem = fontSize ? fontSize.replace('px', '') * 1 : 48
       this.ele = doc.querySelector(app)
-      this.toRem = toRem
 
       this.IsNum = (value) => {
-        return typeof value === 'number' && !isNaN(value);
+        return typeof value === 'number' && !isNaN(value)
       }
 
       //存放已加载的图片loadList
@@ -30,42 +30,16 @@
         this.loadList.push({ key, url })
       }
 
-      this.add = {
-        /**
-         * @description: 生成dom元素并记录
-         * @param {number} x
-         * @param {number} y
-         * @param {string} key
-         */
-        image: (x, y, key) => {
-          let { url } = this.loadList.filter(i => i.key == key)[0]
-          let img = this.createIMG(url)
-          img.style.position = 'absolute'
-          img.style.left = this.IsNum(x) ? `${x / toRem}rem` : x
-          img.style.top = this.IsNum(y) ? `${y / toRem}rem` : y
-          this.domList.push({ box: img, key, id: key })
-        },
-        /**
-         * @description: 生成dom元素并记录
-         * @param {number} x
-         * @param {number} y
-         * @param {object} obj {key(对应图片key):id(你要设置的盒子id)}
-         */
-        spritesheet: (x, y, obj) => {
-          let key = Object.keys(obj)
-          let id = obj[key]
-          let { url } = this.loadList.filter(i => i.key == key)[0]
-          let box = this.createBOX(url)
-          box.id = id
-          box.style.position = 'absolute'
-          box.style.left = x ? `${x / toRem}rem` : x
-          box.style.top = y ? `${y / toRem}rem` : y
-          this.domList.push({ box, key, id })
-        }
-      }
       this.find = id => {
         return this.domList.filter(item => id == item.id)[0].box
       }
+
+      this.do = fn => {
+        fn.bind(this)()
+        return this
+      }
+
+      this.do(preload)
     }
     /**
      * @description: 生成img元素
@@ -109,12 +83,19 @@
     constructor(config) {
       super(config)
       this.advertiseTime = null
+      this.getParms = obj => {
+        let str = ''
+        for (const a in obj) {
+          str += `${a}=${obj[a]}&`
+        }
+        return str
+      }
 
       this.ajax = opt => {
         let defaults = { async: true, data: '', ...opt }
         let xhr = new XMLHttpRequest();
         if (defaults.type.toLowerCase() == 'get') {
-          defaults.url += '?' + getParms(defaults.data);
+          defaults.url += '?' + this.getParms(defaults.data);
           xhr.open('get', defaults.url, defaults.async);
           xhr.send(null);
         } else {
@@ -138,92 +119,85 @@
         this.advertiseTime = setInterval(() => {
           imgLoad(img, () => {
             if (!img.complete) {
-              img.src = '';
-              img.src = data.iurl;
+              img.src = ''
+              img.src = data.iurl
             } else {
               clearInterval(this.advertiseTime);
-              StatisticsPix('ad_imp');
+              StatisticsPix('ad_imp')
             }
           })
         }, 4000);
       }
 
-      this.getData = (url, requestData) => {
-        clearInterval(this.advertiseTime)
-        let data = requestData.ts = new Date().getTime()
-        this.ajax({
-          type: 'get',
-          url,
-          data,
-          success: res => {
-            data = JSON.parse(res)
-            adid = data.adid;
-            oid = data.nm_id;
-            advertise.src = data.iurl;
-            ad_curl = data.ad_curl;
-            this.checkImg(advertise)
-          }
-        })
-      }
     }
   }
 
   class setStyle extends Fun {
     constructor(config) {
       super(config)
+      const { setStyles } = config
       this.styleList = []
-      this.keyframesSheets = ''
       this.styleSheets = ''
+      this.keyframesSheets = ''
       this.activeSheets = ''
+      this.renderSheets = ''
       this.isFloat = n => ~~n !== n
 
+      /**
+       * @description: 如果为浮点数则为rem保留小数点
+       * @param {number} n
+       * @return:float || int
+       */
       this.getValue = n => {
         let value = n / this.toRem
         this.isFloat(value) && (value = value.toFixed(6))
         return value
       }
 
+      this.forStyles = (css, filterArr) => {
+        let str = ''
+        !filterArr && (filterArr = [])
+        Object.keys(css).filter(key => !filterArr.includes(key)).forEach(key => {
+          if (this.IsNum(css[key])) {
+            str += `${key}:${this.getValue(css[key])}rem;`
+          } else {
+            if (this.needHack(key)) {
+              str += `${this.needHack(key)}:${css[key]};`
+            }
+            str += `${key}:${css[key]};`
+          }
+        })
+        return str
+      }
+
+      /**
+       * @description: 兼容css3
+       * @param {string} key 
+       * @return {boolean}
+       */
       this.needHack = key => {
-        if (key.indexOf('transform') !== -1) {
+        if (key.indexOf('transform') !== -1 || key.indexOf('animation') !== -1) {
           return `-webkit-${key}`
         } else {
           return false
         }
       }
-
-      this.forInStyles = obj => {
-        let str = ''
-        for (const key in obj) {
-          if (key !== 'imgStyles') {
-            if (this.IsNum(obj[key])) {
-              if (this.needHack(key)) {
-                str += `${this.needHack(key)}:${this.getValue(obj[key])}rem;`
-              }
-              str += `${key}:${this.getValue(obj[key])}rem;`
-            } else {
-              if (this.needHack(key)) {
-                str += `${this.needHack(key)}:${obj[key]};`
-              }
-              str += `${key}:${obj[key]};`
-            }
-          }
-        }
-        return str
-      }
       /**
        * @description: 集成styleSheets,推至style标签内
        * @param {[{styles,id:String,imgStyles}]} arr
+       * @return {string}
        */
       this.createStyles = arr => {
+        let str = ''
         arr.forEach(item => {
           let { styles, id } = item
-          let str = `#${id}{position: absolute;${this.forInStyles(styles)}overflow:hidden;}`
+          str += `#${id}{position: absolute;${this.forStyles(styles, ['imgStyles'])}overflow:hidden;}`
           let { imgStyles } = styles
           if (imgStyles) {
-            str += `#${id} img{position: relative;${this.forInStyles(imgStyles)}}`
+            str += `#${id} img{position: relative;${this.forStyles(imgStyles)}}`
           }
-          this.styleSheets += str
         })
+        return str
       }
 
       this.setStyles = {
@@ -251,24 +225,7 @@
           let stepValue = parseInt(100 / (step - 1))
           Array.from(new Array(step)).forEach((i, idx) => {
             let persent = idx * stepValue
-            str += `${persent}%{`
-            for (let key in stepStyle[idx]) {
-              let vals = stepStyle[idx][key]
-              let setIn = ''
-              if (this.IsNum(vals)) {
-                if (this.needHack(key)) {
-                  setIn = `${this.needHack(key)}:${this.getValue(vals)}rem;`
-                }
-                setIn += `${key}:${this.getValue(vals)}rem;`
-              } else {
-                if (this.needHack(key)) {
-                  setIn = `${this.needHack(key)}:${vals};`
-                }
-                setIn += `${key}:${vals};`
-              }
-              str += setIn
-            }
-            str += '}'
+            str += `${persent}%{${this.forStyles(stepStyle[idx])}}`
           })
           str += '}'
           this.keyframesSheets += ` @-webkit-keyframes ${str} @keyframes ${str}`
@@ -277,12 +234,86 @@
       }
 
       this.addCSS = () => {
-        this.styleSheets += this.keyframesSheets
-        this.createStyles(this.styleList)
-        this.styleSheets += this.activeSheets
+        this.styleSheets += this.keyframesSheets + this.createStyles(this.styleList) + this.activeSheets + this.renderSheets
         doc.querySelector('style').innerHTML += this.styleSheets
       }
 
+      this.do(setStyles)
+    }
+  }
+
+  class Add extends setStyle {
+    constructor(config) {
+      super(config)
+      const { add } = config
+      this.setCSS = (ele, css) => {
+        let { id, className } = ele
+        let i = id ? `#${id}` : ''
+        let c = className ? `.${className}` : ''
+        if (i || c) {
+          let str = `${i}${c}{position:absloute;`
+          let fArr = ['id', 'className']
+          str += `${this.forStyles(css, fArr)}}`
+          this.renderSheets += str
+        }
+      }
+      this.add = {
+        /**
+         * @description: 生成dom元素并记录
+         * @param {number} x
+         * @param {number} y
+         * @param {string} key
+         */
+        image: (x, y, key) => {
+          let { url } = this.loadList.filter(i => i.key == key)[0]
+          let img = this.createIMG(url)
+          img.style.position = 'absolute'
+          img.style.left = this.IsNum(x) ? `${x / this.toRem}rem` : x
+          img.style.top = this.IsNum(y) ? `${y / this.toRem}rem` : y
+          this.domList.push({ box: img, key, id: key })
+        },
+        /**
+         * @description: 生成dom元素并记录
+         * @param {number} x
+         * @param {number} y
+         * @param {object} obj {key(对应图片key):id(你要设置的盒子id)}
+         */
+        spritesheet: (x, y, obj) => {
+          let key = Object.keys(obj)
+          let id = obj[key]
+          let { url } = this.loadList.filter(i => i.key == key)[0]
+          let box = this.createBOX(url)
+          box.id = id
+          box.style.position = 'absolute'
+          box.style.left = x ? `${x / this.toRem}rem` : x
+          box.style.top = y ? `${y / this.toRem}rem` : y
+          this.domList.push({ box, key, id })
+        },
+        render: fn => {
+          /**
+           * @description: 仿render
+           * @param {string} type
+           * @param {{}} css
+           * @param {Array} childs
+           * @return {HTMLElement}
+           */
+          const h = (type, css, childs) => {
+            let ele = doc.createElement(type)
+            let { id, className } = css || {}
+            id && (ele.id = id)
+            className && (ele.className = className)
+            this.setCSS(ele, css)
+            if (childs && childs.length) {
+              childs.forEach(i => {
+                ele.appendChild(i)
+              })
+            }
+            return ele
+          }
+          let box = fn(h)
+          this.domList.push({ box, key: box.id, id: box.id })
+        }
+      }
       this.loading = () => {
         this.addCSS()
         this.domList.forEach(item => {
@@ -290,12 +321,15 @@
         })
         return this
       }
+
+      this.do(add).loading()
     }
   }
 
-  class Active extends setStyle {
+  class Active extends Add {
     constructor(config) {
       super(config)
+      const { active } = config
       this.frameList = {}
       this.keyframesList = {}
       this.isString = n => n === n + ''
@@ -306,9 +340,7 @@
        * @param {string} key 
        */
       this.goFrame = (ele, area, key) => {
-        const min = area[0]
-        const max = area[1]
-        let ud = area[2]
+        let [min, max, ud] = area
         let deg = min
         let value = null
         let id = ele.id
@@ -364,32 +396,21 @@
           this.find(id).className = ''
         }
       }
+      this.do(active)
     }
   }
 
   class Event extends Active {
     constructor(config) {
       super(config)
-      const { preload, setStyles, add, active, event } = config
+      const { event } = config
       this.movie = []
       this.classTimer = []
       this.isRunning = false
       this.$touch = (key, fn) => {
         this.find(key).ontouchend = fn.bind(this)
       }
-      this.init = () => {
-        this.do(preload)
-          .do(setStyles)
-          .do(add)
-          .loading()
-          .do(active)
-          .do(event)
-      }
-      this.init()
-    }
-    do = fn => {
-      fn.bind(this)()
-      return this
+      this.do(event)
     }
     laterRun (arr) {
       if (arr.length && !this.isRunning) {
