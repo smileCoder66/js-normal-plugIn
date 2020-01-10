@@ -31,7 +31,18 @@
       }
 
       this.find = id => {
-        return this.domList.filter(item => id == item.id)[0].box
+        let ele = null
+        this.domList.forEach(item => {
+          if (id == item.id) {
+            ele = item.box
+          } else if (item.box.querySelector(`#${id}`)) {
+            ele = item.box.querySelector(`#${id}`)
+          } else if (item.box.querySelector(`.${id}`)) {
+            ele = item.box.querySelector(`.${id}`)
+          }
+        })
+        ele = ele || doc.querySelector(`#${id}`)
+        return ele
       }
 
       this.do = fn => {
@@ -82,13 +93,19 @@
   class Fun extends Game {
     constructor(config) {
       super(config)
+      // this.coinTimes = getCookie(`coins${lpid}`) || 8
       this.advertiseTime = null
+
       this.getParms = obj => {
         let str = ''
         for (const a in obj) {
           str += `${a}=${obj[a]}&`
         }
         return str
+      }
+
+      this.clearCheck = () => {
+        clearInterval(this.advertiseTime)
       }
 
       this.ajax = opt => {
@@ -263,33 +280,6 @@
     constructor(config) {
       super(config)
       const { add } = config
-      this.watchs = {}
-      this.watchsTimer = {}
-      this.$set = (id, key, val) => {
-        this.watchs[id][key] = val
-      }
-      this.watchProps = (id, obj, key) => {
-        this.watchs[id] = {
-          ...this.watchs[id],
-          [key]: null
-        }
-        Object.defineProperty(this.watchs[id], key, {
-          get: () => {
-            return obj[key]
-          },
-          set: val => {
-            clearInterval(this.watchsTimer[id])
-            this.watchsTimer[id] = setInterval(() => {
-              let ele = doc.querySelector(`#${id}`)
-              if (ele) {
-                clearInterval(this.watchsTimer[id])
-                ele[key] = val
-              }
-            }, 50);
-          }
-        })
-        this.watchs[id][key] = obj[key]
-      }
 
       this.setCSS = (ele, css) => {
         let { id, className } = ele
@@ -301,7 +291,6 @@
           str += `${this.forStyles(css, fArr)}}`
           this.renderSheets += str
         }
-        css.props && this.watchProps(id, css.props, 'innerText')
       }
 
       this.add = {
@@ -314,6 +303,7 @@
         image: (x, y, key) => {
           let { url } = this.loadList.filter(i => i.key == key)[0]
           let img = this.createIMG(url)
+          img.id = key
           img.style.position = 'absolute'
           img.style.left = this.IsNum(x) ? `${x / this.toRem}rem` : x
           img.style.top = this.IsNum(y) ? `${y / this.toRem}rem` : y
@@ -347,7 +337,13 @@
           const h = (type, css, childs) => {
             let ele = doc.createElement(type)
             let { id, className } = css || {}
-            id && (ele.id = id)
+            if (id) {
+              ele.id = id
+              if (type == 'img') {
+                let arr = this.loadList.filter(i => i.key == id)[0]
+                ele.src = arr ? arr.url : ''
+              }
+            }
             className && (ele.className = className)
             this.setCSS(ele, css)
             if (childs && childs.length) {
@@ -365,6 +361,7 @@
           this.domList.push({ box, key: box.id, id: box.id })
         }
       }
+
       this.loading = () => {
         this.addCSS()
         this.domList.forEach(item => {
@@ -401,8 +398,8 @@
           value = deg => `${key}(${deg})`
         }
         const movie = () => {
-          deg -= ud
-          if (deg >= min || deg <= max) {
+          deg += ud
+          if (deg <= min || deg >= max) {
             ud = -ud
           }
           ele.style.WebkitTransform = value(deg)
@@ -410,6 +407,11 @@
           this.frameList[id] = runFrame(movie)
         }
         this.frameList[id] = runFrame(movie)
+      }
+
+      this.makeSimple = (ele, active, val) => {
+        ele.style[this.needHack('transform')] = `${active}(${val}${active == 'rotate' ? 'deg' : ''})`
+        ele.style.transform = `${active}(${val}${active == 'rotate' ? 'deg' : ''})`
       }
       /**
        * @description: 指定元素执行特效
@@ -436,6 +438,20 @@
           this.keyframesList[id] = setInterval(() => {
             ele.className = ele.className == obj[id] ? '' : obj[id]
           }, time);
+        },
+        speed: (key, sty, time) => {
+          let ele = this.find(key)
+          let { active, area } = sty
+          let [bg, ed] = area
+          this.makeSimple(ele, active, bg)
+          ele.style.transition = `all ${time / 1000}s`
+          this.makeSimple(ele, active, ed)
+          setTimeout(() => {
+            ele.style.transition = 'all 0s'
+            setTimeout(() => {
+              this.makeSimple(ele, active, bg)
+            }, 500)
+          }, time);
         }
       }
       this.stop = {
@@ -447,7 +463,7 @@
           this.find(id).className = ''
         }
       }
-      this.do(active)
+      active && this.do(active)
     }
   }
 
@@ -458,9 +474,55 @@
       this.movie = []
       this.classTimer = []
       this.isRunning = false
-      this.$touch = (key, fn) => {
-        this.find(key).ontouchend = fn.bind(this)
+      this.openTouch = {}
+      this.watchs = {}
+      this.watchsTimer = {}
+
+      this.watchProps = (id, key, eleID) => {
+        let ele = this.find(eleID)
+        let a = null
+        Object.defineProperty(this.watchs, id, {
+          get: function () {
+            return a
+          },
+          set: function (val) {
+            a = val
+            ele[key] = val
+          }
+        })
       }
+
+      this.hasTime = () => {
+        this.watchs.coinTimes = getCookie(`coins${lpid}`) || 8
+        return this.watchs.coinTimes > 0
+      }
+
+      this.calCoins = () => {
+        this.watchs.coinTimes--
+        let timeStamp = new Date()
+        timeStamp.setTime(timeStamp.getTime() + 24 * 3600 * 1000)
+        timeStamp.setHours(0, 0, 0, 0)
+        doc.cookie = `coins${lpid}=${escape(this.watchs.coinTimes)};expires=${timeStamp.toGMTString()}`
+      }
+
+      this.$touch = (key, opKey, fn) => {
+        let ele = typeof key === 'string' ? this.find(key) : key
+        if (opKey) {
+          ele.ontouchend = () => {
+            if (!this.openTouch[opKey]) {
+              this.openTouch[opKey] = true
+              fn.bind(this)()
+            }
+          }
+        } else {
+          ele.ontouchend = fn.bind(this)
+        }
+      }
+
+      this.return = (opKey) => {
+        this.openTouch[opKey] = false
+      }
+
       this.do(event)
     }
     laterRun (arr) {
